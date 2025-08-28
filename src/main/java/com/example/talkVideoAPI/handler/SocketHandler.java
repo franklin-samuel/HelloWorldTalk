@@ -6,15 +6,14 @@ import com.corundumstudio.socketio.SocketIOServer;
 import com.corundumstudio.socketio.annotation.OnConnect;
 import com.corundumstudio.socketio.annotation.OnDisconnect;
 import com.corundumstudio.socketio.annotation.OnEvent;
+import com.example.talkVideoAPI.model.SupportedLanguage;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 
-import java.util.HashMap;
 import java.util.Map;
-import java.util.Objects;
 import java.util.UUID;
 
 @Component
@@ -63,6 +62,11 @@ public class SocketHandler {
         String nativeLang = payload.get("nativeLanguage");
         String targetLang = payload.get("targetLanguage");
         String sessionKey = "session:" + clientId;
+
+        if (!SupportedLanguage.isValid(nativeLang) || !SupportedLanguage.isValid(targetLang)) {
+            client.sendEvent("error", "Idioma inválido.");
+            return;
+        }
 
         redis.opsForHash().put(sessionKey, "native", nativeLang);
         redis.opsForHash().put(sessionKey, "target", targetLang);
