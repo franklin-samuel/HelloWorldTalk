@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <title>Talk Video App</title>
+  <link rel="stylesheet" href="style.css">
+  <script defer src="/socket.io/socket.io.js"></script>
+  <script defer src="client.js"></script>
+</head>
+<body>
+  <div id="roomConfig">
+    <h2>Configurações de idioma</h2>
+
+    <label>Idioma nativo:
+      <select id="nativeLanguage"></select>
+    </label>
+
+    <label>Idioma alvo:
+      <select id="targetLanguage"></select>
+    </label>
+
+    <button id="btnConnect">Começar</button>
+  </div>
+
+  <div id="roomDiv" class="d-none">
+    <video id="localVideo" autoplay muted playsinline></video>
+    <video id="remoteVideo" autoplay playsinline></video>
+    <button id="toggleVideo"><span id="videoIcon">🎥</span></button>
+    <button id="toggleAudio"><span id="audioIcon">🎤</span></button>
+  </div>
+</body>
+</html>
