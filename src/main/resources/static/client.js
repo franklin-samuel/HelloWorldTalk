@@ -1,5 +1,5 @@
 const LOCAL_IP_ADDRESS = "localhost";
-const socket = io(`http://${LOCAL_IP_ADDRESS}:8080`);
+const socket = io(`http://localhost:9092`);
 
 const getElement = id => document.getElementById(id);
 const [btnConnect, btnToggleVideo, btnToggleAudio, divRoomConfig, roomDiv, nativeLanguage, targetLanguage, localVideo, remoteVideo] =
@@ -13,7 +13,7 @@ const streamConstraints = { video: true, audio: true };
 
 async function loadLanguages() {
   try {
-    const res = await fetch("/language");
+    const res = await fetch("/languages");
     const languages = await res.json();
     languages.forEach(lang => {
       [nativeLanguage, targetLanguage].forEach(select => {
