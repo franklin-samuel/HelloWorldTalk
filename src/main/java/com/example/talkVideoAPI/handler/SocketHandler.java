@@ -31,17 +31,20 @@ public class SocketHandler {
         this.redis = redisTemplate;
         server.addListeners(this);
         server.start();
-        System.out.println("[Socket] Netty Socket.IO iniciado na porta " + server.getConfiguration().getPort());
+        logger.info("[Socket] Netty Socket.IO iniciado na porta " + server.getConfiguration().getPort());
     }
 
     @OnConnect
     public void onConnect(SocketIOClient client) {
-        logger.info("Cliente conectado: " + client.getSessionId());
+        logger.info("[Connect] Cliente conectado: {}", client.getSessionId());
     }
 
     @OnDisconnect
     public void onDisconnect(SocketIOClient client) {
         String clientId = client.getSessionId().toString();
+        logger.info("[Disconnect] Cliente desconectado: {}", clientId);
+
+        // Remove da fila de matchmaking
         redis.opsForList().remove(MATCH_QUEUE, 0, clientId);
         redis.delete("session:" + clientId);
 
@@ -51,9 +54,13 @@ public class SocketHandler {
             String partnerId = (String) redis.opsForValue().get("room_partner:" + room);
             if (partnerId != null && !partnerId.equals(clientId)) {
                 SocketIOClient partner = server.getClient(UUID.fromString(partnerId));
-                if (partner != null) partner.sendEvent("userDisconnected", clientId);
+                if (partner != null) {
+                    partner.sendEvent("userDisconnected", clientId);
+                    logger.info("[Disconnect] Notificando parceiro {} sobre desconexão de {}", partnerId, clientId);
+                }
             }
-            redis.delete("room_partnet:" + room);
+            redis.delete("room_partner:" + room);
+            logger.info("[Disconnect] Sala {} limpa após desconexão de {}", room, clientId);
         }
     }
 
@@ -64,8 +71,11 @@ public class SocketHandler {
         String targetLang = payload.get("targetLanguage");
         String sessionKey = "session:" + clientId;
 
+        logger.info("[joinRoom] Cliente {} solicitou entrar na sala: native={}, target={}", clientId, nativeLang, targetLang);
+
         if (!SupportedLanguage.isValid(nativeLang) || !SupportedLanguage.isValid(targetLang)) {
             client.sendEvent("error", "Idioma inválido.");
+            logger.warn("[joinRoom] Cliente {} enviou idiomas inválidos.", clientId);
             return;
         }
 
@@ -80,28 +90,31 @@ public class SocketHandler {
         if (partnerClientId == null) {
             redis.opsForList().rightPush(MATCH_QUEUE, clientId);
             client.sendEvent("waiting");
+            logger.info("[MATCH] Cliente {} colocado na fila de espera.", clientId);
         } else {
             room = UUID.randomUUID().toString();
             client.joinRoom(room);
             SocketIOClient partner = server.getClient(UUID.fromString(partnerClientId));
             if (partner != null) partner.joinRoom(room);
-            client.sendEvent("joined", room);
 
             redis.opsForValue().set("user_room:" + clientId, room);
             redis.opsForValue().set("user_room:" + partnerClientId, room);
             redis.opsForValue().set("room_partner:" + room, partnerClientId);
-
             redis.opsForList().remove(MATCH_QUEUE, 0, partnerClientId);
-            client.sendEvent("joined", room);
-            if (partner != null) partner.sendEvent("joined", room);
 
+            client.sendEvent("joined", Map.of("room", room, "role", "caller"));
+            if (partner != null) partner.sendEvent("joined", Map.of("room", room, "role", "callee"));
+
+            logger.info("[MATCH] Sala criada: {} entre {} e {}", room, clientId, partnerClientId);
         }
+
         printLog("onJoinRoom", client, room);
     }
 
     @OnEvent("ready")
     public void onReady(SocketIOClient client, String room, AckRequest ackRequest) {
         client.getNamespace().getRoomOperations(room).sendEvent("ready", room);
+        logger.info("[ready] Cliente {} pronto na sala {}", client.getSessionId(), room);
         printLog("onReady", client, room);
     }
 
@@ -109,6 +122,7 @@ public class SocketHandler {
     public void onCandidate(SocketIOClient client, Map<String, Object> payload) {
         String room = (String) payload.get("room");
         client.getNamespace().getRoomOperations(room).sendEvent("candidate", payload);
+        logger.info("[candidate] Cliente {} enviou candidate na sala {}", client.getSessionId(), room);
         printLog("onCandidate", client, room);
     }
 
@@ -117,6 +131,7 @@ public class SocketHandler {
         String room = (String) payload.get("room");
         Object sdp = payload.get("sdp");
         client.getNamespace().getRoomOperations(room).sendEvent("offer", sdp);
+        logger.info("[offer] Cliente {} enviou offer na sala {}", client.getSessionId(), room);
         printLog("onOffer", client, room);
     }
 
@@ -125,6 +140,7 @@ public class SocketHandler {
         String room = (String) payload.get("room");
         Object sdp = payload.get("sdp");
         client.getNamespace().getRoomOperations(room).sendEvent("answer", sdp);
+        logger.info("[answer] Cliente {} enviou answer na sala {}", client.getSessionId(), room);
         printLog("onAnswer", client, room);
     }
 
@@ -141,6 +157,7 @@ public class SocketHandler {
             if (partner != null) partner.sendEvent("userDisconnected", clientId);
         }
         redis.delete("room_partner:" + room);
+        logger.info("[leaveRoom] Cliente {} saiu da sala {}", clientId, room);
         printLog("onLeaveRoom", client, room);
     }
 
@@ -150,18 +167,25 @@ public class SocketHandler {
 
         for (int i = 0; i < size; i++) {
             String otherId = (String) redis.opsForList().index(MATCH_QUEUE, i);
-            if (otherId == null || otherId.equals(clientId)) continue;
+            if (otherId == null) continue;
 
             Map<Object, Object> otherSession = redis.opsForHash().entries("session:" + otherId);
-            if (otherSession == null) continue;
+            if (otherSession.isEmpty()) {
+                logger.info("[findPartner] Cliente {} não tem sessão ativa.", otherId);
+                continue;
+            } else {
+                logger.info("[findPartner] Cliente {} disponível para match.", otherId);
+            }
 
             String otherNative = (String) otherSession.get("native");
             String otherTarget = (String) otherSession.get("target");
 
-            if (myTarget.equals(otherNative) && otherTarget.equals(myNative)) {
+            if (myTarget.equalsIgnoreCase(otherNative) && otherTarget.equalsIgnoreCase(myNative)) {
+                logger.info("[findPartner] Match encontrado entre {} e {}", clientId, otherId);
                 return otherId;
             }
         }
+        logger.info("[findPartner] Nenhum parceiro encontrado para {}", clientId);
         return null;
     }
 
@@ -171,9 +195,8 @@ public class SocketHandler {
         try {
             size = client.getNamespace().getRoomOperations(room).getClients().size();
         } catch (Exception e) {
-            logger.error("error ", e);
+            logger.error("Erro ao obter clientes da sala", e);
         }
-        logger.info("#ConncetedClients - {} => room: {}, count: {}", header, room, size);
+        logger.info("#ConnectedClients - {} => room: {}, count: {}", header, room, size);
     }
-
 }
