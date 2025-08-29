@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Talk Video App - Sessão</title>
+    <style>
+        body { font-family: sans-serif; margin: 20px; }
+        select, button { margin: 5px; padding: 5px; font-size: 16px; }
+        video { width: 45%; margin: 5px; border: 1px solid #ccc; }
+        .d-none { display: none; }
+        #roomDiv { margin-top: 20px; }
+    </style>
+</head>
+<body>
+<h1>Talk Video App - Sessão</h1>
+
+<div id="divRoomConfig">
+    <label class="block text-white text-sm font-medium mb-2">
+        Seu idioma nativo
+    </label>
+    <select id="nativeLanguage" class="w-full px-4 py-3 rounded-lg bg-white bg-opacity-10 text-white border border-white border-opacity-20 focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50 transition-all">
+        <option value="">Selecione seu idioma nativo</option>
+    </select>
+
+    <label class="block text-white text-sm font-medium mb-2">
+        Seu idioma alvo
+    </label>
+    <select id="targetLanguage" class="w-full px-4 py-3 rounded-lg bg-white bg-opacity-10 text-white border border-white border-opacity-20 focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50 transition-all">
+        <option value="">Selecione seu idioma nativo</option>
+    </select>
+
+    <button id="btnConnect">Conectar</button>
+</div>
+
+<div id="roomDiv" class="d-none">
+    <h2>Sala de Conversa</h2>
+    <video id="localVideo" autoplay muted playsinline></video>
+    <video id="remoteVideo" autoplay playsinline></video>
+    <br>
+    <button id="toggleVideo">🎥 Toggle Vídeo</button>
+    <button id="toggleAudio">🎤 Toggle Áudio</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.3.0/socket.io.js"></script>
+<script src="client.js?v=1"></script>
+</body>
+</html>

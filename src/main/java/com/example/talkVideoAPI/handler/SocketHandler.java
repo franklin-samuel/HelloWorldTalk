@@ -31,6 +31,7 @@ public class SocketHandler {
         this.redis = redisTemplate;
         server.addListeners(this);
         server.start();
+        System.out.println("[Socket] Netty Socket.IO iniciado na porta " + server.getConfiguration().getPort());
     }
 
     @OnConnect
@@ -71,7 +72,9 @@ public class SocketHandler {
         redis.opsForHash().put(sessionKey, "native", nativeLang);
         redis.opsForHash().put(sessionKey, "target", targetLang);
 
+        logger.info("[MATCH] Cliente {} entrou. Tentando encontrar parceiro...", clientId);
         String partnerClientId = findPartner(clientId, nativeLang, targetLang);
+        logger.info("[MATCH] Parceiro encontrado: {}", partnerClientId);
 
         String room = null;
         if (partnerClientId == null) {
