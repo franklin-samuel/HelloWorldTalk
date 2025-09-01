@@ -58,7 +58,6 @@ public class SocketHandler {
             if (partnerId != null && !partnerId.equals(clientId)) {
                 SocketIOClient partner = server.getClient(UUID.fromString(partnerId));
 
-                // Limpa mapeamentos do parceiro (ele volta para a fila)
                 redis.delete("user_room:" + partnerId);
                 redis.delete("room_partner:" + partnerId);
 
@@ -68,7 +67,6 @@ public class SocketHandler {
                     logger.info("[Disconnect] Notificando parceiro {} sobre desconexão de {}", partnerId, clientId);
                 }
 
-                // Reinsere o parceiro no matchmaking
                 requeueClient(partnerId);
             }
 
@@ -140,7 +138,6 @@ public class SocketHandler {
 
     @OnEvent("stop")
     public void onStop(SocketIOClient client) {
-        // STOP: Usuário volta para home; parceiro volta para a fila
         String clientId = client.getSessionId().toString();
         String room = (String) redis.opsForValue().get("user_room:" + clientId);
         cleanupRoom(clientId, room, false);
@@ -149,7 +146,6 @@ public class SocketHandler {
 
     @OnEvent("nextPartner")
     public void onNext(SocketIOClient client) {
-        // NEXT: Ambos voltam para a fila
         String clientId = client.getSessionId().toString();
         String room = (String) redis.opsForValue().get("user_room:" + clientId);
         cleanupRoom(clientId, room, true);
@@ -160,7 +156,6 @@ public class SocketHandler {
 
         String partnerId = (String) redis.opsForValue().get("room_partner:" + clientId);
 
-        // Limpa mapeamentos do cliente
         redis.delete("user_room:" + clientId);
         redis.delete("room_partner:" + clientId);
 
@@ -254,7 +249,6 @@ public class SocketHandler {
         redis.opsForValue().set("room_partner:" + clientId, partnerId);
         redis.opsForValue().set("room_partner:" + partnerId, clientId);
 
-        // Remove ambos da fila (se estiverem nela)
         redis.opsForList().remove(MATCH_QUEUE, 0, clientId);
         redis.opsForList().remove(MATCH_QUEUE, 0, partnerId);
 
