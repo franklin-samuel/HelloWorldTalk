@@ -241,7 +241,7 @@
 <body>
 <div class="container">
     <div class="header">
-        <h1>TalkVideo</h1>
+        <h1>Hello World!</h1>
         <p>Connect with language learners worldwide</p>
     </div>
 
@@ -268,8 +268,6 @@
     </div>
 
     <div id="roomDiv" class="d-none">
-        <div id="statusIndicator"></div>
-
         <div class="video-container">
             <div class="video-wrapper">
                 <video id="localVideo" autoplay muted playsinline></video>
@@ -280,25 +278,14 @@
                 <div class="video-label">Partner</div>
             </div>
         </div>
-
         <div class="controls">
-            <button id="toggleVideo" class="btn btn-secondary">
-                🎥 Toggle Video
-            </button>
-            <button id="toggleAudio" class="btn btn-secondary">
-                🎤 Toggle Audio
-            </button>
-            <button id="btnNext" class="btn btn-primary">
-                ➡️ Next Partner
-            </button>
-            <button id="btnDisconnect" class="btn" style="background: rgba(220, 53, 69, 0.8);">
-                ❌ Disconnect
-            </button>
+            <button id="stopBtn" class="btn btn-secondary">Stop</button>
+            <button id="nextBtn" class="btn btn-secondary">Next Partner</button>
         </div>
     </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.3.0/socket.io.js"></script>
-<script src="client.js?v=1"></script>
+<script src="client.js?v=1" defer></script>
 </body>
 </html>
