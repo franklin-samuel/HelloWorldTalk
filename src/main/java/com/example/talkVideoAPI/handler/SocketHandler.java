@@ -44,38 +44,48 @@ public class SocketHandler {
         String clientId = client.getSessionId().toString();
         logger.info("[Disconnect] Cliente desconectado: {}", clientId);
 
-        // Remove da fila de matchmaking
         redis.opsForList().remove(MATCH_QUEUE, 0, clientId);
         redis.delete("session:" + clientId);
 
         String room = (String) redis.opsForValue().get("user_room:" + clientId);
         if (room != null) {
+            String partnerId = (String) redis.opsForValue().get("room_partner:" + clientId);
+
+            // Limpa mapeamentos do cliente
             redis.delete("user_room:" + clientId);
-            String partnerId = (String) redis.opsForValue().get("room_partner:" + room);
+            redis.delete("room_partner:" + clientId);
+
             if (partnerId != null && !partnerId.equals(clientId)) {
                 SocketIOClient partner = server.getClient(UUID.fromString(partnerId));
+
+                // Limpa mapeamentos do parceiro (ele volta para a fila)
+                redis.delete("user_room:" + partnerId);
+                redis.delete("room_partner:" + partnerId);
+
                 if (partner != null) {
+                    partner.leaveRoom(room);
                     partner.sendEvent("userDisconnected", clientId);
                     logger.info("[Disconnect] Notificando parceiro {} sobre desconexão de {}", partnerId, clientId);
                 }
+
+                // Reinsere o parceiro no matchmaking
+                requeueClient(partnerId);
             }
-            redis.delete("room_partner:" + room);
+
             logger.info("[Disconnect] Sala {} limpa após desconexão de {}", room, clientId);
         }
     }
 
-    @OnEvent("joinRoom")
-    public void onJoinRoom(SocketIOClient client, Map<String, String> payload) {
+    @OnEvent("joinQueue")
+    public void onJoinQueue(SocketIOClient client, Map<String, String> payload) {
         String clientId = client.getSessionId().toString();
         String nativeLang = payload.get("nativeLanguage");
         String targetLang = payload.get("targetLanguage");
         String sessionKey = "session:" + clientId;
 
-        logger.info("[joinRoom] Cliente {} solicitou entrar na sala: native={}, target={}", clientId, nativeLang, targetLang);
-
         if (!SupportedLanguage.isValid(nativeLang) || !SupportedLanguage.isValid(targetLang)) {
             client.sendEvent("error", "Idioma inválido.");
-            logger.warn("[joinRoom] Cliente {} enviou idiomas inválidos.", clientId);
+            logger.warn("[joinQueue] Cliente {} enviou idiomas inválidos.", clientId);
             return;
         }
 
@@ -86,29 +96,13 @@ public class SocketHandler {
         String partnerClientId = findPartner(clientId, nativeLang, targetLang);
         logger.info("[MATCH] Parceiro encontrado: {}", partnerClientId);
 
-        String room = null;
         if (partnerClientId == null) {
             redis.opsForList().rightPush(MATCH_QUEUE, clientId);
             client.sendEvent("waiting");
             logger.info("[MATCH] Cliente {} colocado na fila de espera.", clientId);
         } else {
-            room = UUID.randomUUID().toString();
-            client.joinRoom(room);
-            SocketIOClient partner = server.getClient(UUID.fromString(partnerClientId));
-            if (partner != null) partner.joinRoom(room);
-
-            redis.opsForValue().set("user_room:" + clientId, room);
-            redis.opsForValue().set("user_room:" + partnerClientId, room);
-            redis.opsForValue().set("room_partner:" + room, partnerClientId);
-            redis.opsForList().remove(MATCH_QUEUE, 0, partnerClientId);
-
-            client.sendEvent("joined", Map.of("room", room, "role", "caller"));
-            if (partner != null) partner.sendEvent("joined", Map.of("room", room, "role", "callee"));
-
-            logger.info("[MATCH] Sala criada: {} entre {} e {}", room, clientId, partnerClientId);
+            createRoomAndNotify(clientId, partnerClientId);
         }
-
-        printLog("onJoinRoom", client, room);
     }
 
     @OnEvent("ready")
@@ -144,21 +138,77 @@ public class SocketHandler {
         printLog("onAnswer", client, room);
     }
 
-    @OnEvent("leaveRoom")
-    public void onLeaveRoom(SocketIOClient client, String room) {
+    @OnEvent("stop")
+    public void onStop(SocketIOClient client) {
+        // STOP: Usuário volta para home; parceiro volta para a fila
         String clientId = client.getSessionId().toString();
-        client.leaveRoom(room);
-        redis.delete("user_room:" + clientId);
-        redis.delete("session:" + clientId);
+        String room = (String) redis.opsForValue().get("user_room:" + clientId);
+        cleanupRoom(clientId, room, false);
+        client.sendEvent("stopped");
+    }
 
-        String partnerId = (String) redis.opsForValue().get("room_partner:" + room);
-        if (partnerId != null && !partnerId.equals(clientId)) {
-            SocketIOClient partner = server.getClient(UUID.fromString(partnerId));
-            if (partner != null) partner.sendEvent("userDisconnected", clientId);
+    @OnEvent("nextPartner")
+    public void onNext(SocketIOClient client) {
+        // NEXT: Ambos voltam para a fila
+        String clientId = client.getSessionId().toString();
+        String room = (String) redis.opsForValue().get("user_room:" + clientId);
+        cleanupRoom(clientId, room, true);
+    }
+
+    private void cleanupRoom(String clientId, String room, boolean requeue) {
+        if (room == null) return;
+
+        String partnerId = (String) redis.opsForValue().get("room_partner:" + clientId);
+
+        // Limpa mapeamentos do cliente
+        redis.delete("user_room:" + clientId);
+        redis.delete("room_partner:" + clientId);
+
+        SocketIOClient client = server.getClient(UUID.fromString(clientId));
+        if (client != null) {
+            client.leaveRoom(room);
         }
-        redis.delete("room_partner:" + room);
-        logger.info("[leaveRoom] Cliente {} saiu da sala {}", clientId, room);
-        printLog("onLeaveRoom", client, room);
+
+        if (partnerId != null && !partnerId.equals(clientId)) {
+            redis.delete("user_room:" + partnerId);
+            redis.delete("room_partner:" + partnerId);
+
+            SocketIOClient partner = server.getClient(UUID.fromString(partnerId));
+            if (partner != null) {
+                partner.leaveRoom(room);
+                if (requeue) {
+                    partner.sendEvent("partnerNext");
+                } else {
+                    partner.sendEvent("userDisconnected");
+                }
+            }
+
+            requeueClient(partnerId);
+        }
+
+        if (requeue) requeueClient(clientId);
+
+        logger.info("[cleanupRoom] Sala {} limpa. clientId={}, partnerId={}, requeueCaller={}", room, clientId, partnerId, requeue);
+    }
+
+    private void requeueClient(String clientId) {
+        Map<Object, Object> session = redis.opsForHash().entries("session:" + clientId);
+        if (!session.isEmpty()) {
+            String nativeLang = (String) session.get("native");
+            String targetLang = (String) session.get("target");
+
+            String partnerId = findPartner(clientId, nativeLang, targetLang);
+            if (partnerId == null) {
+                redis.opsForList().rightPush(MATCH_QUEUE, clientId);
+                SocketIOClient c = server.getClient(UUID.fromString(clientId));
+                if (c != null) c.sendEvent("waiting");
+                logger.info("[requeueClient] {} re-enfileirado e aguardando.", clientId);
+            } else {
+                createRoomAndNotify(clientId, partnerId);
+            }
+        } else {
+            logger.info("[requeueClient] Sessão ausente para {}. Não re-enfileirando.", clientId);
+        }
     }
 
     private String findPartner(String clientId, String myNative, String myTarget) {
@@ -187,6 +237,31 @@ public class SocketHandler {
         }
         logger.info("[findPartner] Nenhum parceiro encontrado para {}", clientId);
         return null;
+    }
+
+    private void createRoomAndNotify(String clientId, String partnerId) {
+        String roomId = UUID.randomUUID().toString();
+
+        SocketIOClient client = server.getClient(UUID.fromString(clientId));
+        SocketIOClient partner = server.getClient(UUID.fromString(partnerId));
+        if (client == null || partner == null) return;
+
+        client.joinRoom(roomId);
+        partner.joinRoom(roomId);
+
+        redis.opsForValue().set("user_room:" + clientId, roomId);
+        redis.opsForValue().set("user_room:" + partnerId, roomId);
+        redis.opsForValue().set("room_partner:" + clientId, partnerId);
+        redis.opsForValue().set("room_partner:" + partnerId, clientId);
+
+        // Remove ambos da fila (se estiverem nela)
+        redis.opsForList().remove(MATCH_QUEUE, 0, clientId);
+        redis.opsForList().remove(MATCH_QUEUE, 0, partnerId);
+
+        client.sendEvent("match_found", Map.of("room", roomId, "role", "caller"));
+        partner.sendEvent("match_found", Map.of("room", roomId, "role", "callee"));
+
+        logger.info("[MATCH] Sala {} criada entre {} (caller) e {} (callee)", roomId, clientId, partnerId);
     }
 
     private static void printLog(String header, SocketIOClient client, String room) {
