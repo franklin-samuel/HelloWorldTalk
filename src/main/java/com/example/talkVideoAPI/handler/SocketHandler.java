@@ -51,7 +51,6 @@ public class SocketHandler {
         if (room != null) {
             String partnerId = (String) redis.opsForValue().get("room_partner:" + clientId);
 
-            // Limpa mapeamentos do cliente
             redis.delete("user_room:" + clientId);
             redis.delete("room_partner:" + clientId);
 
@@ -214,6 +213,13 @@ public class SocketHandler {
             String otherId = (String) redis.opsForList().index(MATCH_QUEUE, i);
             if (otherId == null) continue;
 
+            SocketIOClient otherClient = server.getClient(UUID.fromString(otherId));
+            if (otherClient == null) {
+                logger.info("[findPartner] Cliente {} está na fila, mas não está mais conectado. Removendo...");
+                redis.opsForList().remove(MATCH_QUEUE, 0, otherId);
+                continue;
+            }
+
             Map<Object, Object> otherSession = redis.opsForHash().entries("session:" + otherId);
             if (otherSession.isEmpty()) {
                 logger.info("[findPartner] Cliente {} não tem sessão ativa.", otherId);
@@ -235,28 +241,45 @@ public class SocketHandler {
     }
 
     private void createRoomAndNotify(String clientId, String partnerId) {
+        logger.info("[Room Manager] Iniciando criação de sala. clientId={}, partnerId={}", clientId, partnerId);
+
         String roomId = UUID.randomUUID().toString();
+        logger.info("[Room Manager] UUID da sala gerado: {}", roomId);
 
         SocketIOClient client = server.getClient(UUID.fromString(clientId));
         SocketIOClient partner = server.getClient(UUID.fromString(partnerId));
-        if (client == null || partner == null) return;
 
+        if (client == null) {
+            logger.warn("[Room Manager] Cliente não encontrado para clientId={}", clientId);
+            return;
+        }
+        if (partner == null) {
+            logger.warn("[Room Manager] Parceiro não encontrado para partnerId={}", partnerId);
+            return;
+        }
+
+        logger.info("[Room Manager] Clientes encontrados, ingressando ambos na sala {}", roomId);
         client.joinRoom(roomId);
         partner.joinRoom(roomId);
 
+        logger.info("[Room Manager] Gravando dados no Redis...");
         redis.opsForValue().set("user_room:" + clientId, roomId);
         redis.opsForValue().set("user_room:" + partnerId, roomId);
         redis.opsForValue().set("room_partner:" + clientId, partnerId);
         redis.opsForValue().set("room_partner:" + partnerId, clientId);
 
+        logger.info("[Room Manager] Removendo clientes da fila MATCH_QUEUE...");
         redis.opsForList().remove(MATCH_QUEUE, 0, clientId);
         redis.opsForList().remove(MATCH_QUEUE, 0, partnerId);
 
-        client.sendEvent("match_found", Map.of("room", roomId, "role", "caller"));
-        partner.sendEvent("match_found", Map.of("room", roomId, "role", "callee"));
+        logger.info("[Room Manager] Enviando evento 'match' para ambos os clientes...");
+        client.sendEvent("match", Map.of("room", roomId, "role", "caller"));
+        partner.sendEvent("match", Map.of("room", roomId, "role", "callee"));
 
         logger.info("[MATCH] Sala {} criada entre {} (caller) e {} (callee)", roomId, clientId, partnerId);
+        logger.info("[Room Manager] Finalizando método createRoomAndNotify.");
     }
+
 
     private static void printLog(String header, SocketIOClient client, String room) {
         if (room == null) return;

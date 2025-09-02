@@ -1,4 +1,4 @@
-let socket = io("https://96e5629effef.ngrok-free.app", {
+let socket = io("https://4ccc89e92f44.ngrok-free.app", {
   transports: ["websocket"],
   forceNew: true,
   secure: true
@@ -83,7 +83,7 @@ socket.on("waiting", () => {
     console.log("aguardando parceiro...")
 });
 
-socket.on("match_found", async data => {
+socket.on("match", async data => {
     room = data.room;
     role = data.role;
     console.log("Match encontrado:", room, role);
