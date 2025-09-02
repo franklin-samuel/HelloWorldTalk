@@ -215,7 +215,7 @@ public class SocketHandler {
 
             SocketIOClient otherClient = server.getClient(UUID.fromString(otherId));
             if (otherClient == null) {
-                logger.info("[findPartner] Cliente {} está na fila, mas não está mais conectado. Removendo...");
+                logger.info("[findPartner] Cliente {} está na fila, mas não está mais conectado. Removendo...", otherId);
                 redis.opsForList().remove(MATCH_QUEUE, 0, otherId);
                 continue;
             }
