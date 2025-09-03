@@ -154,6 +154,7 @@ socket.on("stopped", () => {
     console.log("Vôce parou a chamada");
     document.getElementById("divRoomConfig").classList.remove("d-none");
     document.getElementById("roomDiv").classList.add("d-none");
+    document.getElementById("header").classList.remove("d-none");
     cleanup();
 });
 
@@ -177,8 +178,11 @@ btnConnect.onclick = async () => {
     if (!nativeLang || !targetLang) {
         alert("Selecione os idiomas antes de conectar!");
         return;
-    } else if (nativeLang === targetLang) {
+    }
+
+    if (nativeLang === targetLang) {
         alert("Os idiomas devem ser diferentes.");
+        return;
     }
 
 
@@ -189,6 +193,7 @@ btnConnect.onclick = async () => {
 
     document.getElementById("divRoomConfig").classList.add("d-none");
     document.getElementById("roomDiv").classList.remove("d-none");
+    document.getElementById("header").classList.add("d-none")
 }
 
 loadLanguages();
