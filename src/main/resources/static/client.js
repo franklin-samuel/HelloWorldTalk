@@ -1,9 +1,17 @@
-let socket = io("https://4ccc89e92f44.ngrok-free.app", {
+const LOCAL_IP_ADDRESS = "192.168.0.10";
+
+let socket = io("https://f1b53ff69a6d.ngrok-free.app", {
   transports: ["websocket"],
   forceNew: true,
   secure: true
 });
 console.log("[Socket] Tentando conectar ao servidor Socket.IO...");
+socket.on("connect", () => {
+    console.log("[Socket] Conectado!");
+})
+socket.on("disconnect", () => {
+    console.log("[Socket] Disconectado.")
+})
 
 let pc;
 let localStream;
@@ -23,7 +31,8 @@ const nextBtn = document.getElementById("nextBtn");
 const iceServers = {
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" },
-    { urls: "stun:stun1.l.google.com:19302" }
+    { urls: "stun:stun1.l.google.com:19302" },
+    { urls: `turn:${LOCAL_IP_ADDRESS}:3478`, username: "userlocal", credential: 'senha123' }
   ]
 };
 
@@ -66,9 +75,8 @@ function createPeerConnection() {
 
     localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
 
-    remoteStream = new MediaStream();
     pc.ontrack = event => {
-        event.streams[0].getTracks().forEach(track => remoteStream.addTrack(track));
+        remoteStream = event.streams[0];
         remoteVideo.srcObject = remoteStream;
     };
 
@@ -99,15 +107,23 @@ socket.on("match", async data => {
 
 socket.on("offer", async sdp => {
     if (!pc) createPeerConnection();
-    await pc.setRemoteDescription(new RTCSessionDescription(sdp));
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-    socket.emit("answer", { room, sdp: answer });
+    if (pc.signalingState === "stable" || pc.signalingState === "have-remote-offer") {
+        await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        socket.emit("answer", { room, sdp: answer });
+    } else {
+        console.warn("Ignorando offer, estado inválido:", pc.signalingState)
+    }
 });
 
 socket.on("answer", async sdp => {
-    await pc.setRemoteDescription(new RTCSessionDescription(sdp));
-    socket.emit("ready", room);
+    if (pc && pc.signalingState === "have-local-offer") {
+        await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+        socket.emit("ready", room);
+    } else {
+        console.warn("Ignorando answer, estado inválido:", pc?.signalingState);
+    }
 });
 
 socket.on("candidate", async payload => {
@@ -136,6 +152,8 @@ socket.on("partnerNext", () => {
 
 socket.on("stopped", () => {
     console.log("Vôce parou a chamada");
+    document.getElementById("divRoomConfig").classList.remove("d-none");
+    document.getElementById("roomDiv").classList.add("d-none");
     cleanup();
 });
 
@@ -152,16 +170,21 @@ function cleanup() {
 stopBtn.onclick = () => socket.emit("stop");
 nextBtn.onclick = () => socket.emit("nextPartner");
 
-btnConnect.onclick = () => {
+btnConnect.onclick = async () => {
     const nativeLang = nativeLanguage.value;
     const targetLang = targetLanguage.value;
 
     if (!nativeLang || !targetLang) {
         alert("Selecione os idiomas antes de conectar!");
         return;
+    } else if (nativeLang === targetLang) {
+        alert("Os idiomas devem ser diferentes.");
     }
 
+
+
     console.log(`[Socket] Entrando na fila com idiomas: ${nativeLang} -> ${targetLang}`);
+    await initMedia();
     socket.emit("joinQueue", { nativeLanguage: nativeLang, targetLanguage: targetLang });
 
     document.getElementById("divRoomConfig").classList.add("d-none");
@@ -169,4 +192,3 @@ btnConnect.onclick = () => {
 }
 
 loadLanguages();
-initMedia();
