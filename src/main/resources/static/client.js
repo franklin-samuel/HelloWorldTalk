@@ -21,12 +21,9 @@ let role = null;
 
 const getElement = id => document.getElementById(id);
 
-const [btnConnect, btnToggleVideo, btnToggleAudio, localVideo, remoteVideo, nativeLanguage, targetLanguage] = [
-    "btnConnect", "toggleVideo", "toggleAudio", "localVideo", "remoteVideo", "nativeLanguage", "targetLanguage"
+const [btnConnect, stopBtn, nextBtn, localVideo, remoteVideo, nativeLanguage, targetLanguage] = [
+    "btnConnect", "stopBtn", "nextBtn", "localVideo", "remoteVideo", "nativeLanguage", "targetLanguage"
 ].map(getElement);
-
-const stopBtn = document.getElementById("stopBtn");
-const nextBtn = document.getElementById("nextBtn");
 
 const iceServers = {
   iceServers: [
