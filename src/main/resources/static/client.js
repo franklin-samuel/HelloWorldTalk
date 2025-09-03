@@ -21,8 +21,8 @@ let role = null;
 
 const getElement = id => document.getElementById(id);
 
-const [btnConnect, stopBtn, nextBtn, localVideo, remoteVideo, nativeLanguage, targetLanguage] = [
-    "btnConnect", "stopBtn", "nextBtn", "localVideo", "remoteVideo", "nativeLanguage", "targetLanguage"
+const [btnConnect, stopBtn, nextBtn, localVideo, remoteVideo, remoteLoading, nativeLanguage, targetLanguage] = [
+    "btnConnect", "stopBtn", "nextBtn", "localVideo", "remoteVideo", "remoteLoading", "nativeLanguage", "targetLanguage"
 ].map(getElement);
 
 const iceServers = {
@@ -75,6 +75,8 @@ function createPeerConnection() {
     pc.ontrack = event => {
         remoteStream = event.streams[0];
         remoteVideo.srcObject = remoteStream;
+
+        remoteLoading.style.display = "none";
     };
 
     pc.onicecandidate = event => {
@@ -85,7 +87,8 @@ function createPeerConnection() {
 }
 
 socket.on("waiting", () => {
-    console.log("aguardando parceiro...")
+    console.log("aguardando parceiro...");
+    remoteLoading.style.display = "block";
 });
 
 socket.on("match", async data => {
